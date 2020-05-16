@@ -23,6 +23,8 @@
 #include <fstream>
 #include <string>
 
+#include "gurobi_c++.h"
+
 using namespace std;
 class CWire;
 class CGate;
@@ -59,6 +61,14 @@ public:
 	float getProb() {return _prob;}
 	void setIlp(bool i) {_ilp = i;}
 	bool getIlp() {return _ilp;}
+	void setTimeValue(int i, int time) {
+		if(time==0) _v1 = i;
+		else  _v2 = i;
+	}
+	int getTimeValue(int time) {
+		if(time == 0) return _v1;
+		else return _v2;
+	}
 private:
 	string _name;
 	int	_value; 								// Wire value
@@ -67,6 +77,8 @@ private:
 	CGate* _fanin;							// Fanin
 	vector<CGate*> _vFanout;			// Fanouts
 	bool _ilp;
+	int _v1;
+	int _v2;
 };
 
 class CGate {
@@ -201,9 +213,11 @@ public:
 	int getPiNum() {return _vPi.size();}
 	int getPoNum() {return _vPo.size();}
 	void Xfill();
-	void IlpAnd(string, string, string, std::ofstream&);
-	void IlpOr(string, string, string, std::ofstream&);
-	void IlpXor(string, string, string, std::ofstream&);
+	void IlpAnd(string, string, string, std::ofstream&, bool);
+	void IlpOr(string, string, string, std::ofstream&, bool);
+	void IlpXor(string, string, string, std::ofstream&, bool);
+	void checkILP();
+	void gurobi();
 	/////////////////Debug////////////////////////
 	void printWireFromName(string name) {
 		CWire* w = getWireFromName(name);
@@ -279,6 +293,7 @@ private:
 
 	void levelize_dft(CWire*, int);
 	int _maxlevel;
+	int _constraint;
 	
 	vector<CWire*> _vPi;
 	vector<CWire*> _vPo;

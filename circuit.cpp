@@ -490,7 +490,6 @@ void CCircuit::test(string pattern) {
 	
 		
 		for(int i = 0; i < 5; ++i) { // load
-			if(pat_cnt == 4) pat4 << "      \"test_si" << i+1 << "\"=";
 			string val;
 			while(getline(file,c)) {
 				val += c;
@@ -506,7 +505,6 @@ void CCircuit::test(string pattern) {
 					int r = rand()%2;
 					g->getFanout()->setValue(2);
 					if(g->getQN()!=0) g->getQN()->setValue(2);	
-					if(pat_cnt == 4) pat4 << r;
 					continue;
 				}
 				int v = val[j]-'0';
@@ -518,7 +516,6 @@ void CCircuit::test(string pattern) {
 					else g->getQN()->setValue(1);
 				}
 			}
-			if(pat_cnt == 4) pat4 << endl;
 		}
 		//Skip Multi cpature//
 /*		if(!first) {	
@@ -558,18 +555,17 @@ void CCircuit::test(string pattern) {
 				for(int i = 0; i < pi.size(); ++i) {
 					if(pi[i] == 'N') {
 						int r = rand()%2;
-						_vPi[i]->setValue(0);
+						_vPi[i]->setValue(r);
 					}
 					else{
-						if(i == 0) _vPi[i]->setValue(3);
+						if(i == 0) _vPi[i]->setValue(1);
 						else _vPi[i]->setValue(pi[i]-'0');
 					}
 				}
 				
-				if(pat_cnt > 4) {
+					if(pat_cnt > 5) {
 					bool fillcomplete = false;
 					while(!fillcomplete) {
-						cout << endl << "Fill\n";
 						fillcomplete = true;
 				  	Xfill();
 				  	for(vector<CGate*> vG: _vvScanChain) {
@@ -584,23 +580,16 @@ void CCircuit::test(string pattern) {
 				  	}
 					}
 				}
-				if(pat_cnt > 4) {
-					vector<CGate*> bf;
-					for(CGate* g: _vGate) {
-						if(g->getType() != "SDFF") continue;
-						if(g->getFanout()->getValue() == 2) bf.push_back(g);
-					}
-					for(CGate* g: bf) cout << "\t" << g->getName() << " " << g->getFanout()->getFanoutNum() << " " << g->getQN()->getFanoutNum() << endl;
-					cin.get();
-				}
+				
 				evaluate();
-				if(pat_cnt == 4) dumpILP();
+				for(CWire* w : _vWire) w->setTimeValue(w->getValue(),0);
+				//if(pat_cnt == 5) checkILP();
 				renewPPIs();
 			}
 			for(int i = 0; i < pi.size(); ++i) {
 				//continue;
 				int r = rand()%2;
-				if(i==0) _vPi[i]->setValue(3);
+				if(i==0) _vPi[i]->setValue(1);
 				else {
 					if(pi_next[i] == 'N') continue;//_vPi[i]->setValue(2);
 					else _vPi[i]->setValue(pi_next[i]-'0');
@@ -623,8 +612,10 @@ void CCircuit::test(string pattern) {
 			}
 		}
 		evaluate();
-	//	dumpSTA(first, pat_cnt);
-		int WSA = 0;
+		for(CWire* w : _vWire) w->setTimeValue(w->getValue(),1);
+//		dumpSTA(first, pat_cnt);
+		if(pat_cnt != 0) dumpILP();
+	/*	int WSA = 0;
 		int WSA_die0 = 0;
 		int WSA_die1 = 0;
 		for(CGate* g: _vGate) {
@@ -664,21 +655,7 @@ void CCircuit::test(string pattern) {
 		miv.push_back(weight);
 		cout << "WSA: " << WSA << endl;
 		cout << "WSA_die0: " << WSA_die0 << endl;
-if(pat_cnt == 4) {
-		ofstream die0tog("die0toggle.rpt");
-		for(CGate* g: _vGate) {
-			if(g->getDie() == 1 || g->getType() == "Dummy") continue;
-			die0tog << g->getType() << " " << g->getName() << ", Value: " << g->getFanout()->getValue() << ", Weight: " << g->getFanout()->getFanoutNum();
-			if(g->getQN() != 0) die0tog << ", QN Value: " << g->getQN()->getValue() << ", QN Weight: " << g->getQN()->getFanoutNum(); 
-			die0tog << ", Level: " << g->getLevel();
-			if(g->getName() == "U58508") {
-				die0tog << endl << "\t";
-				for(int i = 0; i < 4; ++i) die0tog << "I" << i << " " << g->getFanin(i)->getName() << "(" << g->getFanin(i)->getValue() << ")"; 
-			}
-			die0tog << endl;
-		}
-}
-		if(pat_cnt == 4) break;
+		if(pat_cnt == 5) break; */
 
 		string po;
 		while(getline(file,c)) {
@@ -729,6 +706,8 @@ void CCircuit::reset() {
 		if(w->getName() == "1'b0" || w->getName() == "1'b1") continue;
 		w->setValue(-1);
 		w->setProb(-1);
+		w->setTimeValue(-1,0);
+		w->setTimeValue(-1,1);
 	}
 }
 
@@ -941,8 +920,8 @@ void CCircuit::renewPPIs() {
 			if(v==v2) tmp.push_back(v);
 			else if(v == 2) tmp.push_back(2);
 			else if(v2 == 2) tmp.push_back(v);
-			else if(v2 == 0 && v == 1) tmp.push_back(3);
-			else if(v2 == 1 && v == 0) tmp.push_back(4);	
+			else if(v2 == 0 && v == 1) tmp.push_back(1);
+			else if(v2 == 1 && v == 0) tmp.push_back(0);	
 			else assert(false);
 		}
 		store.push_back(tmp);
@@ -1107,64 +1086,111 @@ void CCircuit::Xfill() {
 void CCircuit::dumpILP() {
 	ofstream file("newxfill.lp");
 	vector<string> variable;
+	_constraint = 0;
 	
 	for(CWire* w: _vWire) w->setIlp(false);
 	
 
 	////Objective////
-	file << "min: 0";
+	file << "Minimize\n" << "	";
+	/*bool first_obj = true;
 	for(vector<CGate*> vG: _vvScanChain) {
 		for(CGate* g: vG) {
-			if(g->getType() == "NOR" || g->getType() == "NAND") continue;
 			if(g->getFanout()->getValue() != 2) continue;
-			file << " +" << g->getFanout()->getFanoutNum() << g->getFanout()->getName();
+			if(first_obj) {
+				file << g->getFanout()->getFanoutNum() << " " << g->getFanout()->getName();
+				first_obj = false;
+			}
+			file << " + " << g->getFanout()->getFanoutNum() << " " << g->getFanout()->getName();
 		}
+	}*/
+	bool first_obj = true;
+	for(CGate* g: _vGate) {
+		if(g->getDie() == 1) continue;
+		CWire* w = g->getFanout();
+		if(!first_obj) {
+			file << " + ";
+		}
+		file << w->getFanoutNum()+1 << " " << w->getName() << "_toggle";
+		if(g->getQN() != 0) {
+			file << " + ";
+			file << g->getQN()->getFanoutNum()+1 << " " << g->getQN()->getName() << "_toggle";
+		}
+		first_obj = false;
 	}
-	file << ";\n\n";
+	file << "\n";
+
+	file << "Subject To\n";
 
 
+/////////////////TimeFrame1///////////////
 	for(CGate* g: _vCompute) {
 		if(g->getType() == "SDFF") continue;
-		else if(g->getFanout()->getValue() != 2) continue;
-		if(g->getType() == "NOR" || g->getType() == "NAND") continue;
+		else if(g->getFanout()->getTimeValue(0) != 2) continue;
 
 		CWire* w = g->getFanout();
 		vector<string> fanin;
 		for(int i = 0; i < g->getFaninNum(); ++i) {
-			if(g->getFanin(i)->getValue() == 2) {
+			/*if(g->getFanin(i)->getValue() == 2) {
 				fanin.push_back(g->getFanin(i)->getName());
 				g->getFanin(i)->setIlp(true);
 			}
-			else fanin.push_back(to_string(g->getFanin(i)->getValue()));
+			else fanin.push_back(to_string(g->getFanin(i)->getValue()));*/
+			if(g->getFanin(i)->getTimeValue(0) != 2) {
+				file << " c" << _constraint++ << ": " << g->getFanin(i)->getName() << " = " << g->getFanin(i)->getTimeValue(0) << endl;
+			}
+			fanin.push_back(g->getFanin(i)->getName());
 		}
 		g->getFanout()->setIlp(true);
 
 		vector<string> nonfill;
 		// AND
 		if(g->getType() == "AND") {
-			for(int i = 0; i < g->getFaninNum(); ++i) {
+			for(int i = 0; i < g->getFaninNum()-1; ++i) {
+				file << " c" << _constraint++ << ": " << w->getName() << " - " << fanin[i] << " <= 0\n";
+			}
+			file << " c" << _constraint++ << ": " << w->getName();
+			for(string name: fanin) {
+				file << " - " << name;
+			} 
+			file << " + " << g->getFaninNum() << " >= 0\n";
+			/*for(int i = 0; i < g->getFaninNum(); ++i) {
 				if(g->getFanin(i)->getValue() == 1) continue;
 				nonfill.push_back(g->getFanin(i)->getName());
 			}
 			/////Buffer////
 			if(nonfill.size() == 1) {
-				file << w->getName() << " = " << nonfill[0] << ";\n"; 
+				file << "	c" << _constraint++ << ": "; 
+				file << w->getName() << " = " << nonfill[0] << "\n"; 
 			}
 			///////////////
 			else {
-				for(string name: nonfill) file << w->getName() << " <= " << name << ";\n"; 
+				for(string name: nonfill) {
+					file << "	c" << _constraint++ << ": "; 
+					file << w->getName() << " <= " << name << "\n";
+				} 
+				file << "	c" << _constraint++ << ": "; 
 				file << w->getName() << " >= ";
 				for(int i = 0; i < g->getFaninNum(); ++i) {
 					if(g->getFanin(i)->getValue() == 1) file << "1";
 					else file << g->getFanin(i)->getName();
 
-					if(i == g->getFaninNum()-1) file << " - " << i << ";\n";
+					if(i == g->getFaninNum()-1) file << " - " << i << "\n";
 					else file << " + ";
 				}
-			}
+			}*/
 		}
 		// OR
 		else if(g->getType() == "OR") {
+			for(int i = 0; i < g->getFaninNum()-1; ++i) {
+				file << " c" << _constraint++ << ": " << w->getName() << " - " << fanin[i] << " >= 0\n";
+			}
+			file << " c" << _constraint++ << ": " << w->getName();
+			for(string name: fanin) {
+				file << " - " << name;
+			} 
+			file << " <= 0\n";
+/*
 			for(int i = 0; i < g->getFaninNum(); ++i) {
 				if(g->getFanin(i)->getValue() == 0) continue;
 				nonfill.push_back(g->getFanin(i)->getName());
@@ -1182,10 +1208,19 @@ void CCircuit::dumpILP() {
 
 				if(i == g->getFaninNum()-1) file << ";\n";
 				else file << " + ";
-			}
+			}*/
 		}
 		//NAND
 		else if(g->getType() == "NAND") {
+			for(int i = 0; i < g->getFaninNum()-1; ++i) {
+				file << " c" << _constraint++ << ": - " << w->getName() << " - " << fanin[i] << " <= -1\n";
+			}
+			file << " c" << _constraint++ << ": - " << w->getName();
+			for(string name: fanin) {
+				file << " - " << name;
+			} 
+			file << " + " << g->getFaninNum() << " >= -1\n";
+/*
 			for(int i = 0; i < g->getFaninNum(); ++i) {
 				if(g->getFanin(i)->getValue() == 1) continue;
 				nonfill.push_back(g->getFanin(i)->getName());
@@ -1205,10 +1240,19 @@ void CCircuit::dumpILP() {
 
 				if(i == g->getFaninNum()-1) file << " - " << i << ";\n";
 				else file << " + ";
-			}
+			}*/
 		}
 		//NOR
 		else if(g->getType() == "NOR") {
+			for(int i = 0; i < g->getFaninNum()-1; ++i) {
+				file << " c" << _constraint++ << ": - " << w->getName() << " - " << fanin[i] << " >= -1\n";
+			}
+			file << " c" << _constraint++ << ": - " << w->getName();
+			for(string name: fanin) {
+				file << " - " << name;
+			} 
+			file << " <= -1\n";
+/*
 			for(int i = 0; i < g->getFaninNum(); ++i) {
 				if(g->getFanin(i)->getValue() == 0) continue;
 				nonfill.push_back(g->getFanin(i)->getName());
@@ -1226,255 +1270,665 @@ void CCircuit::dumpILP() {
 
 				if(i == g->getFaninNum()-1) file << ";\n";
 				else file << "+";
-			}
+			}*/
 		}
 		//AOI21
-		if(g->getType() == "AOI21") {
+		else if(g->getType() == "AOI21") {
 			
 			string v1 = g->getName() + "_v1";
-			IlpAnd(fanin[0],fanin[1],v1,file);
+			IlpAnd(fanin[0],fanin[1],v1,file, 0);
 			variable.push_back(v1);
 
-			string out = "1 - " + w->getName();
-			IlpOr(v1,fanin[2],out,file);
+			// //string out = "1 - " + w->getName();
+			IlpOr(v1,fanin[2],w->getName(),file, 1);
 			
 		}
 		//AOI22
 		else if(g->getType() == "AOI22") {
 			string v1 = g->getName() + "_v1";
-			IlpAnd(fanin[0],fanin[1],v1,file);
+			IlpAnd(fanin[0],fanin[1],v1,file, 0);
 			variable.push_back(v1);
 
 			string v2 = g->getName() + "_v2";
-			IlpAnd(fanin[2],fanin[3],v2,file);
+			IlpAnd(fanin[2],fanin[3],v2,file, 0);
 			variable.push_back(v2);
 
-			string out = "1 - " + w->getName();
-			IlpOr(v1,v2,out,file);
+			////string out = "1 - " + w->getName();
+			IlpOr(v1,v2,w->getName(),file, 1);
 		}
 		//AOI211
 		else if(g->getType() == "AOI211") {
 			string v1 = g->getName() + "_v1";
-			IlpAnd(fanin[0],fanin[1],v1,file);
+			IlpAnd(fanin[0],fanin[1],v1,file, 0);
 			variable.push_back(v1);
 
 			string v2 = g->getName() + "_v2";
-			IlpOr(v1,fanin[2],v2,file);
+			IlpOr(v1,fanin[2],v2,file, 0);
 			variable.push_back(v2);
 
-			string out = "1 - " + w->getName();
-			IlpOr(v2,fanin[3],out,file);
+			//string out = "1 - " + w->getName();
+			IlpOr(v2,fanin[3],w->getName(),file, 1);
 		}
 		//AOI221
 		else if(g->getType() == "AOI221") {
 			string v1 = g->getName() + "_v1";
-			IlpAnd(fanin[0],fanin[1],v1,file);
+			IlpAnd(fanin[0],fanin[1],v1,file, 0);
 			variable.push_back(v1);
 
 			string v2 = g->getName() + "_v2";
-			IlpAnd(fanin[2],fanin[3],v2,file);
+			IlpAnd(fanin[2],fanin[3],v2,file, 0);
 			variable.push_back(v2);
 
 			string v3 = g->getName() + "_v3";
-			IlpOr(v2,fanin[4],v3,file);
+			IlpOr(v2,fanin[4],v3,file, 0);
 			variable.push_back(v3);
 			
 
-			string out = "1 - " + w->getName();
-			IlpOr(v1,v3,out,file);
+			//string out = "1 - " + w->getName();
+			IlpOr(v1,v3,w->getName(),file, 1);
 		}
 		//AOI222
 		else if(g->getType() == "AOI222") {
 			string v1 = g->getName() + "_v1";
-			IlpAnd(fanin[0],fanin[1],v1,file);
+			IlpAnd(fanin[0],fanin[1],v1,file, 0);
 			variable.push_back(v1);
 
 			string v2 = g->getName() + "_v2";
-			IlpAnd(fanin[2],fanin[3],v2,file);
+			IlpAnd(fanin[2],fanin[3],v2,file, 0);
 			variable.push_back(v2);
 
 			string v3 = g->getName() + "_v3";
-			IlpAnd(fanin[5],fanin[4],v3,file);
+			IlpAnd(fanin[5],fanin[4],v3,file, 0);
 			variable.push_back(v3);
 
 			string v4 = g->getName() + "_v4";
-			IlpOr(v1,v2,v4,file);
+			IlpOr(v1,v2,v4,file, 0);
 			
-			string out = "1 - " + w->getName();
-			IlpOr(v3,v4,out,file);
+			//string out = "1 - " + w->getName();
+			IlpOr(v3,v4,w->getName(),file, 1);
 		}
 		//OAI21
 		else if(g->getType() == "OAI21") {
 			string v1 = g->getName() + "_v1";
-			IlpOr(fanin[0],fanin[1],v1,file);
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
 			variable.push_back(v1);
 
-			string out = "1 - " + w->getName();
-			IlpAnd(v1,fanin[2],out,file);
+			//string out = "1 - " + w->getName();
+			IlpAnd(v1,fanin[2],w->getName(),file, 1);
 		}
 		//OAI22
 		else if(g->getType() == "OAI22") {
 			string v1 = g->getName() + "_v1";
-			IlpOr(fanin[0],fanin[1],v1,file);
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
 			variable.push_back(v1);
 
 			string v2 = g->getName() + "_v2";
-			IlpOr(fanin[2],fanin[3],v2,file);
+			IlpOr(fanin[2],fanin[3],v2,file, 0);
 			variable.push_back(v2);
 
-			string out = "1 - " + w->getName();
-			IlpAnd(v1,v2,out,file);
+			//string out = "1 - " + w->getName();
+			IlpAnd(v1,v2,w->getName(),file, 1);
 		}
 		//OAI211
 		else if(g->getType() == "OAI211") {
 			string v1 = g->getName() + "_v1";
-			IlpOr(fanin[0],fanin[1],v1,file);
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
 			variable.push_back(v1);
 
 			string v2 = g->getName() + "_v2";
-			IlpAnd(v1,fanin[2],v2,file);
+			IlpAnd(v1,fanin[2],v2,file, 0);
 			variable.push_back(v2);
 
-			string out = "1 - " + w->getName();
-			IlpAnd(v2,fanin[3],out,file);
+			//string out = "1 - " + w->getName();
+			IlpAnd(v2,fanin[3],w->getName(),file, 1);
 		}
 		//OAI221
 		else if(g->getType() == "OAI221") {
 			string v1 = g->getName() + "_v1";
-			IlpOr(fanin[0],fanin[1],v1,file);
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
 			variable.push_back(v1);
 
 			string v2 = g->getName() + "_v2";
-			IlpOr(fanin[2],fanin[3],v2,file);
+			IlpOr(fanin[2],fanin[3],v2,file, 0);
 			variable.push_back(v2);
 
 			string v3 = g->getName() + "_v3";
-			IlpAnd(v2,fanin[4],v3,file);
+			IlpAnd(v2,fanin[4],v3,file, 0);
 			variable.push_back(v3);
 			
 
-			string out = "1 - " + w->getName();
-			IlpAnd(v1,v3,out,file);
+			//string out = "1 - " + w->getName();
+			IlpAnd(v1,v3,w->getName(),file, 1);
 		}
 		//OAI222
 		else if(g->getType() == "OAI222") {
 			string v1 = g->getName() + "_v1";
-			IlpOr(fanin[0],fanin[1],v1,file);
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
 			variable.push_back(v1);
 
 			string v2 = g->getName() + "_v2";
-			IlpOr(fanin[2],fanin[3],v2,file);
+			IlpOr(fanin[2],fanin[3],v2,file, 0);
 			variable.push_back(v2);
 
 			string v3 = g->getName() + "_v3";
-			IlpOr(fanin[5],fanin[4],v3,file);
+			IlpOr(fanin[5],fanin[4],v3,file, 0);
 			variable.push_back(v3);
 
 			string v4 = g->getName() + "_v4";
-			IlpAnd(v1,v2,v4,file);
+			IlpAnd(v1,v2,v4,file, 0);
 			
-			string out = "1 - " + w->getName();
-			IlpAnd(v3,v4,out,file);
+			//string out = "1 - " + w->getName();
+			IlpAnd(v3,v4,w->getName(),file, 1);
 		}
 		//OAI33
 		else if(g->getType() == "OAI33") {
 			string v1 = g->getName() + "_v1";
-			IlpOr(fanin[0],fanin[1],v1,file);
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
 			variable.push_back(v1);
 
 			string v2 = g->getName() + "_v2";
-			IlpOr(fanin[2],v1,v2,file);
+			IlpOr(fanin[2],v1,v2,file, 0);
 			variable.push_back(v2);
 
 			string v3 = g->getName() + "_v3";
-			IlpOr(fanin[3],fanin[4],v3,file);
+			IlpOr(fanin[3],fanin[4],v3,file, 0);
 			variable.push_back(v3);
 
 			string v4 = g->getName() + "_v4";
-			IlpOr(v3,fanin[5],v4,file);
+			IlpOr(v3,fanin[5],v4,file, 0);
 			variable.push_back(v4);
 
-			string out = "1 - " + w->getName();
-			IlpAnd(v2,v4,out,file);
+			//string out = "1 - " + w->getName();
+			IlpAnd(v2,v4,w->getName(),file, 1);
 		}
 		//MUX
 		else if(g->getType() == "MUX") {
 			string v1;
+			v1 = g->getName() + "_v1";
+			file << " c" << _constraint++ << ": " << v1 << " + " << fanin[2] << " = 1\n";
+/*
+			string v1;
 			if(fanin[2] == "0") v1 = "1";
 			else if(fanin[2] == "1") v1 = "0";
-			else v1 = "1 - " + fanin[2];
+			else v1 = "1 - " + fanin[2];*/
 			string v2 = g->getName() + "_v2";
-			IlpAnd(fanin[0], v1, v2, file);
+			IlpAnd(fanin[0], v1, v2, file, 0);
 			variable.push_back(v2);
 
 			string v3 = g->getName() + "_v3";
-			IlpAnd(fanin[1],fanin[2],v3,file);
+			IlpAnd(fanin[1],fanin[2],v3,file, 0);
 			variable.push_back(v3);
 
-			IlpOr(v2, v3, w->getName(), file);
+			IlpOr(v2, v3, w->getName(), file, 0);
 		}
 		//FA
 		else if(g->getType() == "FA") {
 			string v1 = g->getName() + "_v1";
-			IlpOr(fanin[0], fanin[1], v1, file);
+			IlpOr(fanin[0], fanin[1], v1, file, 0);
 			variable.push_back(v1);
 
 			string v2 = g->getName() + "_v2";
-			IlpAnd(fanin[2], v1, v2, file);
+			IlpAnd(fanin[2], v1, v2, file, 0);
 			variable.push_back(v2);
 
 			string v3 = g->getName() + "_v3";
-			IlpAnd(fanin[0], fanin[1], v3, file);
+			IlpAnd(fanin[0], fanin[1], v3, file, 0);
 			variable.push_back(v3);
 
-			IlpOr(v2,v3,w->getName(),file);
+			IlpOr(v2,v3,w->getName(),file, 0);
 
 		
 			string v4 = g->getName() + "_v4";
-			IlpXor(fanin[0], fanin[1], v4, file);
+			IlpXor(fanin[0], fanin[1], v4, file, 0);
 			variable.push_back(v4);
 
-			IlpXor(v4,fanin[2],g->getQN()->getName(),file);
+			IlpXor(v4,fanin[2],g->getQN()->getName(),file, 0);
 		}
 		//XOR
 		else if(g->getType() == "XOR") {
-			IlpXor(fanin[0],fanin[1],w->getName(),file);
+			IlpXor(fanin[0],fanin[1],w->getName(),file, 0);
 		}
 		//XNOR
 		else if(g->getType() == "XNOR") {
-			string out = "1 - " + w->getName();
-			IlpXor(fanin[0],fanin[1],out,file);
+			//string out = "1 - " + w->getName();
+			IlpXor(fanin[0],fanin[1],w->getName(),file, 1);
 		}
 		//INV
-		else if(g->getType() == "INV") file << w->getName() << " = 1 - " << g->getFanin(0)->getName() << ";\n";
+		else if(g->getType() == "INV") file << " c" << _constraint++ << ": " << w->getName() << " + " << g->getFanin(0)->getName() << " = 1\n";
 		else {
-			file << w->getName() << " = " << g->getFanin(0)->getName() << ";\n";
+			assert(g->getType() == "BUF" || g->getType() == "CLKBUF" || g->getType() == "Dummy");
+			file << " c" << _constraint++ << ": " << w->getName() << " - " << g->getFanin(0)->getName() << " = 0\n";
 		}	
 	}
+////////////////End TimeFrame1/////////////////////////
 
+
+/////////////////TimeFrame2///////////////
+	for(CGate* g: _vCompute) {
+		if(g->getFanout()->getTimeValue(1) != 2) continue;
+		if(g->getType() == "SDFF") {
+			file << " c" << _constraint++ << ": " << g->getFanin(0)->getName() << "_2 - " << g->getFanout()->getName() << "_2 = 0\n";
+			if(g->getQN() != 0) file << " c" << _constraint++ << ": " << g->getFanin(0)->getName() << "_2 + " << g->getQN()->getName() << "_2 = 1\n";
+			continue;
+		}
+
+		CWire* w = g->getFanout();
+		vector<string> fanin;
+		for(int i = 0; i < g->getFaninNum(); ++i) {
+			if(g->getFanin(i)->getTimeValue(1) != 2) {
+				file << " c" << _constraint++ << ": " << g->getFanin(i)->getName() << "_2 = " << g->getFanin(i)->getTimeValue(1) << endl;
+			}
+			string n = g->getFanin(i)->getName() + "_2";
+			fanin.push_back(n);
+		}
+
+		// AND
+		if(g->getType() == "AND") {
+			for(int i = 0; i < g->getFaninNum()-1; ++i) {
+				file << " c" << _constraint++ << ": " << w->getName() << "_2 - " << fanin[i] << " <= 0\n";
+			}
+			file << " c" << _constraint++ << ": " << w->getName() << "_2";
+			for(string name: fanin) {
+				file << " - " << name;
+			} 
+			file << " + " << g->getFaninNum() << " >= 0\n";
+		}
+		// OR
+		else if(g->getType() == "OR") {
+			for(int i = 0; i < g->getFaninNum()-1; ++i) {
+				file << " c" << _constraint++ << ": " << w->getName() << "_2 - " << fanin[i] << " >= 0\n";
+			}
+			file << " c" << _constraint++ << ": " << w->getName() << "_2";
+			for(string name: fanin) {
+				file << " - " << name;
+			} 
+			file << " <= 0\n";
+		}
+		//NAND
+		else if(g->getType() == "NAND") {
+			for(int i = 0; i < g->getFaninNum()-1; ++i) {
+				file << " c" << _constraint++ << ": - " << w->getName() << "_2 - " << fanin[i] << " <= -1\n";
+			}
+			file << " c" << _constraint++ << ": - " << w->getName() << "_2";
+			for(string name: fanin) {
+				file << " - " << name;
+			} 
+			file << " + " << g->getFaninNum() << " >= -1\n";
+		}
+		//NOR
+		else if(g->getType() == "NOR") {
+			for(int i = 0; i < g->getFaninNum()-1; ++i) {
+				file << " c" << _constraint++ << ": - " << w->getName() << "_2 - " << fanin[i] << " >= -1\n";
+			}
+			file << " c" << _constraint++ << ": - " << w->getName() << "_2";
+			for(string name: fanin) {
+				file << " - " << name;
+			} 
+			file << " <= -1\n";
+		}
+		//AOI21
+		else if(g->getType() == "AOI21") {
+			
+			string v1 = g->getName() + "_v1_2";
+			IlpAnd(fanin[0],fanin[1],v1,file, 0);
+
+			string out = w->getName() + "_2";
+			IlpOr(v1,fanin[2],out,file, 1);
+			
+		}
+		//AOI22
+		else if(g->getType() == "AOI22") {
+			string v1 = g->getName() + "_v1_2";
+			IlpAnd(fanin[0],fanin[1],v1,file, 0);
+
+			string v2 = g->getName() + "_v2_2";
+			IlpAnd(fanin[2],fanin[3],v2,file, 0);
+
+			string out = w->getName() + "_2";
+			IlpOr(v1,v2,out,file, 1);
+		}
+		//AOI211
+		else if(g->getType() == "AOI211") {
+			string v1 = g->getName() + "_v1_2";
+			IlpAnd(fanin[0],fanin[1],v1,file, 0);
+
+			string v2 = g->getName() + "_v2_2";
+			IlpOr(v1,fanin[2],v2,file, 0);
+
+			string out = w->getName() + "_2";
+			IlpOr(v2,fanin[3],out,file, 1);
+		}
+		//AOI221
+		else if(g->getType() == "AOI221") {
+			string v1 = g->getName() + "_v1_2";
+			IlpAnd(fanin[0],fanin[1],v1,file, 0);
+
+			string v2 = g->getName() + "_v2_2";
+			IlpAnd(fanin[2],fanin[3],v2,file, 0);
+
+			string v3 = g->getName() + "_v3_2";
+			IlpOr(v2,fanin[4],v3,file, 0);
+			
+
+			string out = w->getName() + "_2";
+			IlpOr(v1,v3,out,file, 1);
+		}
+		//AOI222
+		else if(g->getType() == "AOI222") {
+			string v1 = g->getName() + "_v1_2";
+			IlpAnd(fanin[0],fanin[1],v1,file, 0);
+
+			string v2 = g->getName() + "_v2_2";
+			IlpAnd(fanin[2],fanin[3],v2,file, 0);
+
+			string v3 = g->getName() + "_v3_2";
+			IlpAnd(fanin[5],fanin[4],v3,file, 0);
+
+			string v4 = g->getName() + "_v4_2";
+			IlpOr(v1,v2,v4,file, 0);
+			
+			string out = w->getName() + "_2";
+			IlpOr(v3,v4,out,file, 1);
+		}
+		//OAI21
+		else if(g->getType() == "OAI21") {
+			string v1 = g->getName() + "_v1_2";
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
+
+			string out = w->getName() + "_2";
+			IlpAnd(v1,fanin[2],out,file, 1);
+		}
+		//OAI22
+		else if(g->getType() == "OAI22") {
+			string v1 = g->getName() + "_v1_2";
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
+
+			string v2 = g->getName() + "_v2_2";
+			IlpOr(fanin[2],fanin[3],v2,file, 0);
+
+			string out = w->getName() + "_2";
+			IlpAnd(v1,v2,out,file, 1);
+		}
+		//OAI211
+		else if(g->getType() == "OAI211") {
+			string v1 = g->getName() + "_v1_2";
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
+
+			string v2 = g->getName() + "_v2_2";
+			IlpAnd(v1,fanin[2],v2,file, 0);
+
+			string out = w->getName() + "_2";
+			IlpAnd(v2,fanin[3],out,file, 1);
+		}
+		//OAI221
+		else if(g->getType() == "OAI221") {
+			string v1 = g->getName() + "_v1_2";
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
+
+			string v2 = g->getName() + "_v2_2";
+			IlpOr(fanin[2],fanin[3],v2,file, 0);
+
+			string v3 = g->getName() + "_v3_2";
+			IlpAnd(v2,fanin[4],v3,file, 0);
+			
+
+			string out = w->getName() + "_2";
+			IlpAnd(v1,v3,out,file, 1);
+		}
+		//OAI222
+		else if(g->getType() == "OAI222") {
+			string v1 = g->getName() + "_v1_2";
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
+
+			string v2 = g->getName() + "_v2_2";
+			IlpOr(fanin[2],fanin[3],v2,file, 0);
+
+			string v3 = g->getName() + "_v3_2";
+			IlpOr(fanin[5],fanin[4],v3,file, 0);
+
+			string v4 = g->getName() + "_v4_2";
+			IlpAnd(v1,v2,v4,file, 0);
+			
+			string out = w->getName() + "_2";
+			IlpAnd(v3,v4,out,file, 1);
+		}
+		//OAI33
+		else if(g->getType() == "OAI33") {
+			string v1 = g->getName() + "_v1_2";
+			IlpOr(fanin[0],fanin[1],v1,file, 0);
+
+			string v2 = g->getName() + "_v2_2";
+			IlpOr(fanin[2],v1,v2,file, 0);
+
+			string v3 = g->getName() + "_v3_2";
+			IlpOr(fanin[3],fanin[4],v3,file, 0);
+
+			string v4 = g->getName() + "_v4_2";
+			IlpOr(v3,fanin[5],v4,file, 0);
+
+			string out = w->getName() + "_2";
+			IlpAnd(v2,v4,out,file, 1);
+		}
+		//MUX
+		else if(g->getType() == "MUX") {
+			string v1;
+			v1 = g->getName() + "_v1_2";
+			file << " c" << _constraint++ << ": " << v1 << " + " << fanin[2] << " = 1\n";
+			string v2 = g->getName() + "_v2_2";
+			IlpAnd(fanin[0], v1, v2, file, 0);
+
+			string v3 = g->getName() + "_v3_2";
+			IlpAnd(fanin[1],fanin[2],v3,file, 0);
+
+			string out = w->getName() + "_2";
+			IlpOr(v2, v3, out, file, 0);
+		}
+		//FA
+		else if(g->getType() == "FA") {
+			string v1 = g->getName() + "_v1_2";
+			IlpOr(fanin[0], fanin[1], v1, file, 0);
+			variable.push_back(v1);
+
+			string v2 = g->getName() + "_v2_2";
+			IlpAnd(fanin[2], v1, v2, file, 0);
+			variable.push_back(v2);
+
+			string v3 = g->getName() + "_v3_2";
+			IlpAnd(fanin[0], fanin[1], v3, file, 0);
+
+			string out = w->getName() + "_2";
+			IlpOr(v2,v3,out,file, 0);
+
+		
+			string v4 = g->getName() + "_v4_2";
+			IlpXor(fanin[0], fanin[1], v4, file, 0);
+
+			string qn = g->getQN()->getName() + "_2";
+			IlpXor(v4,fanin[2],qn,file, 0);
+		}
+		//XOR
+		else if(g->getType() == "XOR") {
+			string out = w->getName() + "_2";
+			IlpXor(fanin[0],fanin[1],out,file, 0);
+		}
+		//XNOR
+		else if(g->getType() == "XNOR") {
+			string out = w->getName() + "_2";
+			IlpXor(fanin[0],fanin[1],out,file, 1);
+		}
+		//INV
+		else if(g->getType() == "INV") file << " c" << _constraint++ << ": " << w->getName() << "_2 + " << g->getFanin(0)->getName() << "_2 = 1\n";
+		else {
+			assert(g->getType() == "BUF" || g->getType() == "CLKBUF" || g->getType() == "Dummy");
+			file << " c" << _constraint++ << ": " << w->getName() << "_2 - " << g->getFanin(0)->getName() << "_2 = 0\n";
+		}	
+	}
+////////////////End TimeFrame2/////////////////////////
+
+
+//////////Toggle of Die0///////////////////
+	for(CGate* g: _vGate) {
+		if(g->getDie() == 1) continue;
+		CWire* w = g->getFanout();
+		if(w->getTimeValue(0) != 2) file << " c" << _constraint++ << ": " << w->getName() << " = " << w->getTimeValue(0) << "\n";
+		if(w->getTimeValue(1) != 2) file << " c" << _constraint++ << ": " << w->getName() << "_2 = " << w->getTimeValue(1) << "\n";
+
+		string v1 = w->getName();
+		string v2 = w->getName() + "_2";
+		string out = w->getName() + "_toggle";
+
+		IlpXor(v1,v2,out,file,0);
+
+		if(g->getQN() != 0) {
+			w = g->getQN();
+			if(w->getTimeValue(0) != 2) file << " c" << _constraint++ << ": " << w->getName() << " = " << w->getTimeValue(0) << "\n";
+			if(w->getTimeValue(1) != 2) file << " c" << _constraint++ << ": " << w->getName() << "_2 = " << w->getTimeValue(1) << "\n";
+
+			v1 = w->getName();
+			v2 = w->getName() + "_2";
+			out = w->getName() + "_toggle";
+
+			IlpXor(v1,v2,out,file,0);
+		}
+	}
+////////////End Toggle///////////////
+
+
+	
+	file << "Binary\n" << " ";
 	for(CWire* w: _vWire) {
-		if(w->getIlp() == true) file << "bin " << w->getName() << ";\n";
+		if(w->getTimeValue(0) == 2) file << " " << w->getName();
+		if(w->getTimeValue(1) == 2) file << " " << w->getName() << "_2";
+	}
+	file << endl << "End\n";
+
+	file.close();
+	
+	gurobi();
+/*
+	for(CWire* w: _vWire) {
+		if(w->getIlp() == true) file << "0 <= " << w->getName() << ";\n";
 	}
 	for(string name: variable) {
-		file << "bin " << name << ";\n";
+		file << "0 <= " << name << ";\n";
+	}*/
+}
+
+void CCircuit::IlpAnd(string n1, string n2, string nout, std::ofstream& file, bool inverse) {
+	if(!inverse) {
+		file << " c" << _constraint++ << ": " <<nout << " - " << n1 << " <= 0\n";
+		file << " c" << _constraint++ << ": " <<nout << " - " << n2 << " <= 0\n";
+		file << " c" << _constraint++ << ": " <<nout << " - " << n1 << " - " << n2 << " >= -1\n";
+	}
+	else {
+		file << "	c" << _constraint++ << ": - " <<nout << " - " << n1 << " <= -1\n";
+		file << "	c" << _constraint++ << ": - " <<nout << " - " << n2 << " <= -1\n";
+		file << "	c" << _constraint++ << ": - " <<nout << " - " << n1 << " - " << n2 << " >= -2\n";
 	}
 }
 
-void CCircuit::IlpAnd(string n1, string n2, string nout, std::ofstream& file) {
-	file << nout << " <= " << n1 << ";\n";
-	file << nout << " <= " << n2 << ";\n";
-	file << nout << " >= " << n1 << " + " << n2 << " -1;\n";
+void CCircuit::IlpOr(string n1, string n2, string nout, std::ofstream& file, bool inverse) {
+	if(!inverse) {
+		file << "	c" << _constraint++ << ": " <<nout << " - " << n1 << " >= 0\n";
+		file << "	c" << _constraint++ << ": " <<nout << " - " << n2 << " >= 0\n";
+		file << "	c" << _constraint++ << ": " <<nout << " - " << n1 << " - " << n2 << " <= 0\n";
+	}
+	else {
+		file << "	c" << _constraint++ << ": - " <<nout << " - " << n1 << " >= -1\n";
+		file << "	c" << _constraint++ << ": - " <<nout << " - " << n2 << " >= -1\n";
+		file << "	c" << _constraint++ << ": - " <<nout << " - " << n1 << " - " << n2 << " <= -1\n";
+	}
 }
 
-void CCircuit::IlpOr(string n1, string n2, string nout, std::ofstream& file) {
-	file << nout << " >= " << n1 << ";\n";
-	file << nout << " >= " << n2 << ";\n";
-	file << nout << " <= " << n1 << " + " << n2 << ";\n";
-}
-
-void CCircuit::IlpXor(string n1, string n2, string nout, std::ofstream& file) {
-	file << nout << " <= " << n1 << " + " << n2 << ";\n";
+void CCircuit::IlpXor(string n1, string n2, string nout, std::ofstream& file, bool inverse) {
+	if(!inverse) {
+		file << "	c" << _constraint++ << ": " <<nout << " - " << n1 << " - " << n2 << " <= 0\n";
+		file << "	c" << _constraint++ << ": " <<nout << " - " << n1 << " + " << n2 << " >= 0\n";
+		file << "	c" << _constraint++ << ": " <<nout << " + " << n1 << " - " << n2 << " >= 0\n";
+		file << "	c" << _constraint++ << ": " <<nout << " + " << n1 << " + " << n2 << " <= 2\n";
+	}
+	else {
+		file << "	c" << _constraint++ << ": - " <<nout << " - " << n1 << " - " << n2 << " <= -1\n";
+		file << "	c" << _constraint++ << ": - " <<nout << " - " << n1 << " + " << n2 << " >= -1\n";
+		file << "	c" << _constraint++ << ": - " <<nout << " + " << n1 << " - " << n2 << " >= -1\n";
+		file << "	c" << _constraint++ << ": - " <<nout << " + " << n1 << " + " << n2 << " <= 1\n";
+	}
+/*file << nout << " <= " << n1 << " + " << n2 << ";\n";
 	file << nout << " >= " << n1 << " - " << n2 << ";\n";
 	file << nout << " >= " << n2 << " - " << n1 << ";\n";
-	file << nout << " <= " << "2 - " << n1 << " - " << n2 << ";\n";	
+	file << nout << " <= " << "2 - " << n1 << " - " << n2 << ";\n";*/	
+}
+/*
+void CCircuit::IlpNot(string n1, string nout, std::ofstream& file, 0) {
+	file << "	c" << _constraint++ << ": " <<nout << " + " << n1 << " = 1\n"; 
+}*/
+
+void CCircuit::checkILP() {
+	FILE* f;
+	char name[128];
+	int v;
+	/*
+	f = fopen("newxfill.sol", "r");
+	while(fscanf(f, "%s %d", name, &v) != EOF) {
+		string n = name;
+		if(n.size() < 3) continue;
+		if(n.find("toggle") != string::npos) continue;
+		else if(n.substr(n.size()-3,2) == "_v") continue;
+		else if(n.substr(n.size()-2) == "_2") continue;
+
+		CWire* w = getWireFromName(n);
+		w->setValue(v);	
+	}*/	
+
+	ofstream file("ilp_pat4.stil");
+	int i = 1;
+	for(vector<CGate*> vG: _vvScanChain) {
+		file << "      \"test_si" << i++ << "\"=";
+		for(int j = vG.size()-1; j>=0; --j) {
+			file << vG[j]->getFanout()->getValue();
+		}
+		file << ";\n";
+	}
+}
+
+void CCircuit::gurobi() {
+  try {
+    GRBEnv env = GRBEnv();
+    GRBModel model = GRBModel(env, "newxfill.lp");
+
+    model.optimize();
+
+    int optimstatus = model.get(GRB_IntAttr_Status);
+
+    if (optimstatus == GRB_INF_OR_UNBD) {
+      model.set(GRB_IntParam_Presolve, 0);
+      model.optimize();
+      optimstatus = model.get(GRB_IntAttr_Status);
+    }
+
+    if (optimstatus == GRB_OPTIMAL) {
+      double objval = model.get(GRB_DoubleAttr_ObjVal);
+      cout << "Optimal objective: " << objval << endl;
+    } else if (optimstatus == GRB_INFEASIBLE) {
+      cout << "Model is infeasible" << endl;
+
+      // compute and write out IIS
+
+      model.computeIIS();
+      model.write("model.ilp");
+    } else if (optimstatus == GRB_UNBOUNDED) {
+      cout << "Model is unbounded" << endl;
+    } else {
+      cout << "Optimization was stopped with status = "
+           << optimstatus << endl;
+    }
+
+  } catch(GRBException e) {
+    cout << "Error code = " << e.getErrorCode() << endl;
+    cout << e.getMessage() << endl;
+  } catch (...) {
+    cout << "Error during optimization" << endl;
+		cin.get();
+  }
+
 }

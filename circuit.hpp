@@ -204,6 +204,7 @@ public:
 	void evaluate();
 	void function();
 	void test(string);
+	void testonly(string);
 	void reset();
 	void assignInputs();
 	void renewPPIs();
@@ -217,7 +218,7 @@ public:
 	void IlpOr(string, string, string, std::ofstream&, bool);
 	void IlpXor(string, string, string, std::ofstream&, bool);
 	void checkILP();
-	void gurobi();
+	bool gurobi();
 	/////////////////Debug////////////////////////
 	void printWireFromName(string name) {
 		CWire* w = getWireFromName(name);

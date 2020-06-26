@@ -433,65 +433,90 @@ void CCircuit::function() {
 void CCircuit::test(string pattern) {
 
 	ifstream file(pattern);
-	ofstream pat4("prob.stil");
+	ofstream reshape("tate_reshape.stil");
 	string c;
 	bool first = true;
 	bool final_pat = false;
+	bool optimized = true;
 	int pat_cnt = 0;
 	vector<int> vWSA;
 	vector<int> miv;
 	vector<int> vdie0;
 	vector<int> vdie1;
 	while(getline(file,c)) {
+		reshape << c << endl;
 		if(c == "   Macro \"test_setup\";") break;
 	}
 	while(getline(file,c)) { // Ann {}
+		if(optimized) reshape << c << endl;
 		srand(time(NULL));
 		cout << "Start Pattern " << pat_cnt << endl;
-		getline(file,c); // pattern #
+		bool Xs = false;
+		if(pat_cnt != 1) {
+			getline(file,c); // pattern #
+			if(c.find("end") != string::npos ) reshape << "   \"end " << pat_cnt << " unload\": Call \"load_unload\" {\n";
+			else if(optimized) reshape << c << endl;
+		}
 		if(c.find("end") != string::npos) final_pat = true;
 		if(!first) { // unload
 			string outval;
-			for(int i = 0; i < 5; ++i) {
+			for(int i = 0; i < _vvScanChain.size(); ++i) {
 				outval.clear();
 				while(getline(file,c)) {
+					if(pat_cnt == 1) reshape << c << endl;
 					outval += c;
 					if(c.find(";") != string::npos) break;
 				}
 				if(pat_cnt == 1) continue;
+				//if(!optimized) continue;
+				reshape << outval.substr(0, outval.find("=")+1) << endl;
 				outval = outval.substr(outval.find("=")+1, outval.find(";")-outval.find("=")-1);
-				//cout << c << endl;
 				assert(outval.size() == _vvScanChain[i].size());
+
 				for(int j = 0; j < _vvScanChain[i].size(); ++j) {
 					CGate* g = _vvScanChain[i][_vvScanChain[i].size()-1-j];
 					if(outval[j] == 'X') {
-					//	if(g->getFanin(0)->getValue() != 2)
-					//			cout << "X! ScanChain: " << i << ", #" << j << " Failed!!!\n";
-						continue;
+						if(g->getFanin(0)->getValue() == 0) reshape << "L";
+						else if(g->getFanin(0)->getValue() == 1) reshape << "H";
+						else reshape << "X";
 					}
 					else if(outval[j] == 'H') {
 						if(g->getFanin(0)->getValue() != 1 && g->getFanin(0)->getValue() != 3){
 							cout << "H! ScanChain: " << i << ", #" << j << " Failed!!!\n";
-							cout << "\t" << g->getName() << "Value: " << g->getFanout()->getValue() <<endl;
+							cout << "\t" << g->getName() << "Value: " << g->getFanin(0)->getValue() <<endl;
 						}
+						reshape << "H";
 					}
 					else {
 						if(g->getFanin(0)->getValue() != 0 && g->getFanin(0)->getValue() != 4){
 							cout << "L! ScanChain: " << i << ", #" << j << " Failed!!!\n";
 							cout << "\t" << g->getName() << "Value: "<< g->getFanin(0)->getValue() <<endl;
 						}
+						reshape << "L";
 					}
+					if(j%1024==1023) reshape << endl;
 				}
+				reshape << ";" << endl;
 			}
 		}
 		
-		if(final_pat) break;
+		if(final_pat) {
+			reshape << " }" << endl << "}" << endl << endl;
+			reshape << "// Patterns reference\n";
+			break;
+		}
 		reset(); 
+/*		getWireFromName("net8")->setValue(0);	
+		getWireFromName("net8")->setProb(0);	
+		getWireFromName("net1")->setValue(0);	
+		getWireFromName("net1")->setProb(0);	
+	*/	
 	
 		
-		for(int i = 0; i < 5; ++i) { // load
+		for(int i = 0; i < _vvScanChain.size(); ++i) { // load
 			string val;
 			while(getline(file,c)) {
+				if(first) reshape << c << endl;
 				val += c;
 				if(c.find(";") != string::npos) break;
 			}
@@ -510,7 +535,6 @@ void CCircuit::test(string pattern) {
 				int v = val[j]-'0';
 				assert(v==0 || v==1);
 				g->getFanout()->setValue(v);
-				if(pat_cnt == 4) pat4 << v;
 				if(g->getQN() != 0) {
 					if(v==1) g->getQN()->setValue(0);
 					else g->getQN()->setValue(1);
@@ -518,28 +542,33 @@ void CCircuit::test(string pattern) {
 			}
 		}
 		//Skip Multi cpature//
-/*		if(!first) {	
+		if(!first) {	
 		  while(getline(file,c)) {
 		  		if(c.find(";") != string::npos) break;
 		  }
-		}*/	
+		}	
 		/////////////////////
 
 		getline(file,c); // Call capture
+		string first_capture = c;
+		if(first) reshape << c << endl;
 		//getline(file,c); // _pi
 		string pi;
 		while(getline(file,c)) {
+			if(first) reshape << c << endl;
 			pi += c;
 			if(c.find(";") != string::npos) break;
 		}
 		pi = pi.substr(pi.find("=")+1, pi.find(";")-pi.find("=")-1);
 		assert(pi.size() == _vPi.size());
 		string pi_next;
-
+		string second_capture;
 		bool reset_pulse = false;
 		bool oneclock_first = false;
 		if(!first) {
+			if(c.find("Xs") != string::npos) {getline(file,c);Xs=true;}
 			getline(file,c); // Call capture
+			second_capture = c;
 			while(getline(file,c)) {
 				pi_next += c;
 				if(c.find(";") != string::npos) break;
@@ -550,37 +579,34 @@ void CCircuit::test(string pattern) {
 
 			
 			int v, v2;
-			if(pi[0] == 'P' && pi_next[0] == '0') oneclock_first = true;
-			if(pi[0] == 'P') {
+			if(true) {
 				for(int i = 0; i < pi.size(); ++i) {
 					if(pi[i] == 'N') {
 						int r = rand()%2;
 						_vPi[i]->setValue(r);
 					}
 					else{
-						if(i == 0) _vPi[i]->setValue(1);
+						if(pi[i] == 'P') _vPi[i]->setValue(0);
 						else _vPi[i]->setValue(pi[i]-'0');
 					}
 				}
-				
-					if(pat_cnt > 5) {
-					bool fillcomplete = false;
-					while(!fillcomplete) {
-						fillcomplete = true;
-				  	Xfill();
-				  	for(vector<CGate*> vG: _vvScanChain) {
-				  		for(CGate* g: vG) {
-				  			if(g->getFanout()->getProb() == 0.5) {
-									assert(g->getFanout()->getValue() == 2);
-				  			//	cout << g->getName() << " " << g->getFanin(0)->getProb() << endl;
-				  				if(g->getFanin(0)->getProb() > 0.5) {g->getFanout()->setValue(1);g->getQN()->setValue(0);fillcomplete = false;}
-				  				else if(g->getFanin(0)->getProb() < 0.5) {g->getFanout()->setValue(0);g->getQN()->setValue(1);fillcomplete = false;}
-				  			}
-				  		}
-				  	}
+		/*
+				Xfill();
+				for(vector<CGate*> vG: _vvScanChain) {
+					for(CGate* g: vG) {
+						if(g->getFanout()->getProb() == 0.5) {
+							assert(g->getFanout()->getValue() == 2);
+						//	cout << g->getName() << " " << g->getFanin(0)->getProb() << endl;
+							if(g->getFanin(0)->getProb() > 0.5) {g->getFanout()->setValue(1);if(g->getQN()!=0)g->getQN()->setValue(0);}
+							else if(g->getFanin(0)->getProb() < 0.5) {g->getFanout()->setValue(0);if(g->getQN()!=0)g->getQN()->setValue(1);}
+							else {
+								int r = rand()%2;
+								g->getFanout()->setValue(r);
+								if(g->getQN() != 0) g->getQN()->setValue(1-r);
+							}
+						}
 					}
-				}
-				
+				}*/
 				evaluate();
 				for(CWire* w : _vWire) w->setTimeValue(w->getValue(),0);
 				//if(pat_cnt == 5) checkILP();
@@ -589,7 +615,7 @@ void CCircuit::test(string pattern) {
 			for(int i = 0; i < pi.size(); ++i) {
 				//continue;
 				int r = rand()%2;
-				if(i==0) _vPi[i]->setValue(1);
+				if(pi_next[i] == 'P') _vPi[i]->setValue(1);
 				else {
 					if(pi_next[i] == 'N') continue;//_vPi[i]->setValue(2);
 					else _vPi[i]->setValue(pi_next[i]-'0');
@@ -599,7 +625,7 @@ void CCircuit::test(string pattern) {
 		}
 		else {
 			for(int i = 0; i < pi.size(); ++i) {
-				if(pi[i] == 'N') {_vPi[i]->setValue(2);continue;}
+				if(pi[i] == 'N') {_vPi[i]->setValue(0);continue;}
 				int v = pi[i]-'0';
 				_vPi[i]->setValue(v);
 			}	
@@ -613,8 +639,69 @@ void CCircuit::test(string pattern) {
 		}
 		evaluate();
 		for(CWire* w : _vWire) w->setTimeValue(w->getValue(),1);
-//		dumpSTA(first, pat_cnt);
-		if(pat_cnt != 0) dumpILP();
+		//dumpSTA(first, pat_cnt);
+		
+		if(first) {
+			while(getline(file,c)) {
+				for(int i = 0; i < c.size(); ++i) {
+					if(c[i] == 'N') reshape << "0";
+					else reshape << c[i];	
+				}
+				reshape << endl;
+				if(c.find("Ann")!=string::npos) break;
+			}
+			++pat_cnt;
+			first = false;
+			continue;
+		}
+		if(pat_cnt <= 117) optimized = false;
+		else{
+			dumpILP();
+			optimized = gurobi();
+		}
+		if(!optimized) {
+			//if(pat_cnt <= 200) {
+  			while(getline(file,c)) {
+  				if(c.find(";") != string::npos) break;
+  			}
+  			++pat_cnt;
+  			continue;
+			/*}
+			for(CWire* w: _vWire) w->setValue(w->getTimeValue(0));
+			Xfill();
+			for(vector<CGate*> vG: _vvScanChain) {
+				for(CGate* g: vG) {
+					if(g->getFanout()->getProb() == 0.5) {
+						assert(g->getFanout()->getValue() == 2);
+						if(g->getFanin(0)->getProb() > 0.5) {
+							g->getFanout()->setValue(1);
+							g->getFanout()->setTimeValue(1,0);
+							if(g->getQN()!=0){
+								g->getQN()->setValue(0);
+								g->getQN()->setTimeValue(0,0);
+							}
+						}
+						else if(g->getFanin(0)->getProb() < 0.5) {
+							g->getFanout()->setValue(0);
+							g->getFanout()->setTimeValue(0,0);
+							if(g->getQN()!=0) {
+								g->getQN()->setValue(1);
+								g->getQN()->setTimeValue(1,0);
+							}
+						}
+						else {
+							int r = rand()%2;
+							g->getFanout()->setValue(r);
+							g->getFanout()->setTimeValue(r,0);
+							if(g->getQN() != 0) {
+								g->getQN()->setValue(1-r);
+								g->getQN()->setTimeValue(1-r, 0);
+							}
+						}
+					}
+				}
+			}*/
+		}
 	/*	int WSA = 0;
 		int WSA_die0 = 0;
 		int WSA_die1 = 0;
@@ -655,8 +742,73 @@ void CCircuit::test(string pattern) {
 		miv.push_back(weight);
 		cout << "WSA: " << WSA << endl;
 		cout << "WSA_die0: " << WSA_die0 << endl;
-		if(pat_cnt == 5) break; */
+*/
+		
+		/////////////////ReEvaluate for dump STIL///////////////
+		evaluate();
+		renewPPIs();
+		for(int i = 0; i < pi.size(); ++i) {
+			if(pi[i] == 'P') _vPi[i]->setValue(0);
+			else {
+				if(pi_next[i] == 'N') continue;//_vPi[i]->setValue(2);
+				else _vPi[i]->setValue(pi_next[i]-'0');
+			}
+		}
+		for(CWire* w: _vPi) w->setTimeValue(w->getValue(),1);	
+		evaluate();
+		/////////////////End ReEvaluate////////////////////////
+		////////////////Start Dump ScanChain///////////////////
+		for(int i = 0; i < _vvScanChain.size(); ++i) {
+			reshape << "      \"test_si" << i+1 << "\"=" << endl;
+			for(int j = 0; j < _vvScanChain[i].size(); ++j) {
+				CGate* g = _vvScanChain[i][_vvScanChain[i].size()-1-j];
+				reshape << g->getFanout()->getTimeValue(0);
+				if(j%1024==1023) reshape << endl;
+			}
+			
+			if(i==_vvScanChain.size()-1) reshape << "; }\n";
+			else reshape << ";\n";
+		}	
+		////////////Start Dump Pi//////////////////////////////
+		//reshape << first_capture << endl;
+		reshape << "   Call \"multiclock_capture\" {" << endl;
+		reshape << "      \"_pi\"=" << endl;
+		for(int i = 0; i < _vPi.size(); ++i) {
+			if(false) reshape << "0";
+			else if(_vPi[i]->getTimeValue(0) == 2) reshape << "N";
+			else reshape << _vPi[i]->getTimeValue(0);
 
+			if(i%1024 == 1023) reshape << endl;	
+		}
+		reshape << "\n; }\n";
+
+		//LOC
+		reshape << "   Call \"allclock_launch\" {" << endl;
+		reshape << "      \"_pi\"=" << endl;
+		for(int i = 0; i < _vPi.size(); ++i) {
+			if(pi[i] == 'P') reshape << "P";
+			else if(_vPi[i]->getTimeValue(0) == 2) reshape << "N";
+			else reshape << _vPi[i]->getTimeValue(0);
+
+			if(i%1024 == 1023) reshape << endl;	
+		}
+		reshape << "\n; }\n";
+
+		if(Xs) {reshape << "   Ann {* Xs_are_explicit *}" << endl;Xs=false;}
+		//
+		//reshape << second_capture << endl;
+		reshape << "   Call \"allclock_capture\" {" << endl;
+		reshape << "      \"_pi\"=" << endl;
+		for(int i = 0; i < _vPi.size(); ++i) {
+			if(pi_next[i] == 'P') reshape << "P";
+			else if(_vPi[i]->getTimeValue(1) == 2) reshape << "N";
+			else reshape << _vPi[i]->getTimeValue(1);
+
+			if(i%1024 == 1023) reshape << endl;	
+		}
+		reshape << "\n;\n";
+		////////////////////////End Pi/////////////////////////
+		reshape << "      \"_po\"=" << endl;
 		string po;
 		while(getline(file,c)) {
 			po += c;
@@ -665,40 +817,44 @@ void CCircuit::test(string pattern) {
 		po = po.substr(po.find("=")+1, po.find(";")-po.find("=")-1);
 		assert(po.size() == _vPo.size());
 
-		if(!reset_pulse) {
-			for(int i = 0; i < po.size(); ++i) {
-				if(po[i] == 'X') {
-				//	if(_vPo[i]->getValue() != 2) {
-				//		cout << "Po: " << _vPo[i]->getName() << " Failed!!\n" << "i=" << i << ",po[i]=X, _vPo[i]=" << _vPo[i]->getValue() << endl;
-				//	}
-					continue;
-				}
-				if(po[i] == 'H') {
-					if(_vPo[i]->getValue() != 1 && _vPo[i]->getValue() != 3) {
-						cout << "Po: " << _vPo[i]->getName() << " Failed!!\n" << "i=" << i << ",po[i]=H, _vPo[i]=" << _vPo[i]->getValue() << endl;
-					}
-				}
-				else {
-					if(_vPo[i]->getValue() != 0 && _vPo[i]->getValue() != 4) {
-						cout << "Po: " << _vPo[i]->getName() << " Failed!!\n" << "i=" << i << ",po[i]=L, _vPo[i]=" << _vPo[i]->getValue() << endl;
-					}
-				}
+	
+		for(int i = 0; i < po.size(); ++i) {
+			if(po[i] == 'X') {
+			//	if(_vPo[i]->getValue() != 2) {
+			//		cout << "Po: " << _vPo[i]->getName() << " Failed!!\n" << "i=" << i << ",po[i]=X, _vPo[i]=" << _vPo[i]->getValue() << endl;
+			//	}
+				if(_vPo[i]->getValue() == 0) reshape << "L";
+				else if(_vPo[i]->getValue() == 1) reshape << "H";
+				else reshape << "X";
+				//continue;
 			}
-		}
+			else if(po[i] == 'H') {
+				if(_vPo[i]->getValue() != 1 && _vPo[i]->getValue() != 3) {
+					cout << "Po: " << _vPo[i]->getName() << " Failed!!\n" << "i=" << i << ",po[i]=H, _vPo[i]=" << _vPo[i]->getValue() << endl;
+				}
+				reshape << "H";
+			}
+			else {
+				if(_vPo[i]->getValue() != 0 && _vPo[i]->getValue() != 4) {
+					cout << "Po: " << _vPo[i]->getName() << " Failed!!\n" << "i=" << i << ",po[i]=L, _vPo[i]=" << _vPo[i]->getValue() << endl;
+				}
+				reshape << "L";
+			}
 
-		if(first) {
-			first = false;
+			if(i%1024==1023) reshape << endl;		
 		}
+		reshape << endl << "; }\n";
+
 		
 		//if(pat_cnt == 4) break;
 		++pat_cnt;
 	}
 	file.close();
-
-	ofstream outfile1("toggle.csv");
+/*
+	ofstream outfile1("tate_prefer.csv");
 	for(int i = 0; i < vWSA.size(); ++i) {
 		outfile1 << i << "," << vWSA[i] << "," << vdie0[i] << "," << vdie1[i] << "," << miv[i] << "\n"; 
-	}
+	}*/
 }
 
 void CCircuit::reset() {
@@ -712,7 +868,7 @@ void CCircuit::reset() {
 }
 
 void CCircuit::dumpSTA(bool first, int cnt) {
-	ofstream file("/autofs/home/sh528/ITC2020/tate_1G_forTest/pattern_all.tcl", std::ofstream::out|std::ofstream::app);
+	ofstream file("/autofs/home/sh528/ITC2020/netcard_v4/prefer.tcl", std::ofstream::out|std::ofstream::app);
 	if(first) {
 		file.clear();
   	file << endl;	
@@ -740,6 +896,7 @@ void CCircuit::dumpSTA(bool first, int cnt) {
 	//string falling = "set_case_analysis falling {";
 
 	for(CWire* w: _vPi) {
+		if(w->getName() == "test_se" || w->getName() == "ispd_clk") continue;
 		switch (w->getValue()) {
 			case 0:
 				//zero.push_back(w->getName());
@@ -764,7 +921,7 @@ void CCircuit::dumpSTA(bool first, int cnt) {
 
 	file << zero << "}\n";
 	file << one << "}\n";
-	file << "set_case_analysis rising clk\n";
+	file << "set_case_analysis rising ispd_clk\n";
 	//file << falling << "}\n";
 
 	vector<string> zeroFF;
@@ -917,6 +1074,7 @@ void CCircuit::renewPPIs() {
 		for(CGate* g : vG) {
 			int v = g->getFanin(0)->getValue();
 			int v2 = g->getFanout()->getValue();
+			//assert(v2 != 2);
 			if(v==v2) tmp.push_back(v);
 			else if(v == 2) tmp.push_back(2);
 			else if(v2 == 2) tmp.push_back(v);
@@ -958,7 +1116,6 @@ void CCircuit::renewPPIs() {
 			else assert(false);
 		}
 	}
-	cout << "RENEW TOGGLE: " << cnt << endl;
 
 //			if(v == v2) continue;
 //			else if(v == 2) {
@@ -1084,7 +1241,7 @@ void CCircuit::Xfill() {
 }
 
 void CCircuit::dumpILP() {
-	ofstream file("newxfill.lp");
+	ofstream file("tatexfill.lp");
 	vector<string> variable;
 	_constraint = 0;
 	
@@ -1494,7 +1651,10 @@ void CCircuit::dumpILP() {
 			IlpXor(fanin[0],fanin[1],w->getName(),file, 1);
 		}
 		//INV
-		else if(g->getType() == "INV") file << " c" << _constraint++ << ": " << w->getName() << " + " << g->getFanin(0)->getName() << " = 1\n";
+		else if(g->getType() == "INV") {
+			if(w->getName() != g->getFanin(0)->getName())
+				file << " c" << _constraint++ << ": " << w->getName() << " + " << g->getFanin(0)->getName() << " = 1\n";
+		}
 		else {
 			assert(g->getType() == "BUF" || g->getType() == "CLKBUF" || g->getType() == "Dummy");
 			file << " c" << _constraint++ << ": " << w->getName() << " - " << g->getFanin(0)->getName() << " = 0\n";
@@ -1507,9 +1667,11 @@ void CCircuit::dumpILP() {
 	for(CGate* g: _vCompute) {
 		if(g->getFanout()->getTimeValue(1) != 2) continue;
 		if(g->getType() == "SDFF") {
-			file << " c" << _constraint++ << ": " << g->getFanin(0)->getName() << "_2 - " << g->getFanout()->getName() << "_2 = 0\n";
-			if(g->getQN() != 0) file << " c" << _constraint++ << ": " << g->getFanin(0)->getName() << "_2 + " << g->getQN()->getName() << "_2 = 1\n";
-			continue;
+			file << " c" << _constraint++ << ": " << g->getFanin(0)->getName() << " - " << g->getFanout()->getName() << "_2 = 0\n";
+			if(g->getQN() != 0) {
+				file << " c" << _constraint++ << ": " << g->getFanin(0)->getName() << " + " << g->getQN()->getName() << "_2 = 1\n";
+			}
+				continue;
 		}
 
 		CWire* w = g->getFanout();
@@ -1757,13 +1919,22 @@ void CCircuit::dumpILP() {
 			IlpXor(fanin[0],fanin[1],out,file, 1);
 		}
 		//INV
-		else if(g->getType() == "INV") file << " c" << _constraint++ << ": " << w->getName() << "_2 + " << g->getFanin(0)->getName() << "_2 = 1\n";
+		else if(g->getType() == "INV") {
+			if(w->getName() != g->getFanin(0)->getName())
+				file << " c" << _constraint++ << ": " << w->getName() << "_2 + " << g->getFanin(0)->getName() << "_2 = 1\n";
+		}
 		else {
 			assert(g->getType() == "BUF" || g->getType() == "CLKBUF" || g->getType() == "Dummy");
 			file << " c" << _constraint++ << ": " << w->getName() << "_2 - " << g->getFanin(0)->getName() << "_2 = 0\n";
 		}	
 	}
 ////////////////End TimeFrame2/////////////////////////
+
+/////////////////Unknown Input/////////////////////////
+	for(CWire*w: _vPi) {
+		if(w->getValue() != 2) continue;
+		file << " c" << _constraint++ << ": " << w->getName() << " - " << w->getName() << "_2 = 0\n";
+	}
 
 
 //////////Toggle of Die0///////////////////
@@ -1802,16 +1973,7 @@ void CCircuit::dumpILP() {
 	}
 	file << endl << "End\n";
 
-	file.close();
-	
-	gurobi();
-/*
-	for(CWire* w: _vWire) {
-		if(w->getIlp() == true) file << "0 <= " << w->getName() << ";\n";
-	}
-	for(string name: variable) {
-		file << "0 <= " << name << ";\n";
-	}*/
+	file.close();	
 }
 
 void CCircuit::IlpAnd(string n1, string n2, string nout, std::ofstream& file, bool inverse) {
@@ -1891,17 +2053,20 @@ void CCircuit::checkILP() {
 	}
 }
 
-void CCircuit::gurobi() {
+bool CCircuit::gurobi() {
   try {
     GRBEnv env = GRBEnv();
-    GRBModel model = GRBModel(env, "newxfill.lp");
+    GRBModel model = GRBModel(env, "tatexfill.lp");
 
+		model.set("MIPGapAbs", "20.0");
+		//model.set("TimeLimit", "500.0");
     model.optimize();
 
     int optimstatus = model.get(GRB_IntAttr_Status);
 
     if (optimstatus == GRB_INF_OR_UNBD) {
       model.set(GRB_IntParam_Presolve, 0);
+			//model.set("MIPGapAbs", "10.0");
       model.optimize();
       optimstatus = model.get(GRB_IntAttr_Status);
     }
@@ -1909,13 +2074,43 @@ void CCircuit::gurobi() {
     if (optimstatus == GRB_OPTIMAL) {
       double objval = model.get(GRB_DoubleAttr_ObjVal);
       cout << "Optimal objective: " << objval << endl;
+
+			for(CWire* w: _vPi) {
+				if(w->getTimeValue(0) != 2) {
+					w->setValue(w->getTimeValue(0));
+					continue;
+				}
+				GRBVar v = model.getVarByName(w->getName());
+				int value = (int)v.get(GRB_DoubleAttr_X);
+				assert(value==0 || value==1);
+				w->setTimeValue(value,0);	
+				w->setValue(value);
+			}
+			
+			for(vector<CGate*> vG:_vvScanChain) {
+				for(CGate* g: vG) {
+					if(g->getFanout()->getTimeValue(0) == 2) {
+						GRBVar v = model.getVarByName(g->getFanout()->getName());
+						int value = (int)v.get(GRB_DoubleAttr_X);
+						assert(value==0 || value==1);
+						g->getFanout()->setTimeValue(value,0);
+						if(g->getQN()!=0) g->getQN()->setTimeValue(1-value,0);
+					}
+					g->getFanout()->setValue(g->getFanout()->getTimeValue(0));
+					if(g->getQN()!=0) g->getQN()->setValue(g->getQN()->getTimeValue(0));
+				}
+			}
+			return true;
+			//GRBVar* vars = model.getVars();
+			//cout << vars[0].get(GRB_DoubleAttr_X);
+			//cin.get();
     } else if (optimstatus == GRB_INFEASIBLE) {
       cout << "Model is infeasible" << endl;
 
       // compute and write out IIS
 
-      model.computeIIS();
-      model.write("model.ilp");
+      //model.computeIIS();
+      //model.write("model.ilp");
     } else if (optimstatus == GRB_UNBOUNDED) {
       cout << "Model is unbounded" << endl;
     } else {
@@ -1930,5 +2125,238 @@ void CCircuit::gurobi() {
     cout << "Error during optimization" << endl;
 		cin.get();
   }
+	return false;
+}
 
+void CCircuit::testonly(string pattern) {
+
+	ifstream file(pattern);
+	string c;
+	bool first = true;
+	bool final_pat = false;
+	int pat_cnt = 0;
+	vector<int> vWSA;
+	vector<int> miv;
+	vector<int> vdie0;
+	vector<int> vdie1;
+	while(getline(file,c)) {
+		if(c == "   Macro \"test_setup\";") break;
+	}
+	while(getline(file,c)) { // Ann {}
+		cout << "Start Pattern " << pat_cnt << endl;
+		getline(file,c); // pattern #
+		
+		if(c.find("end") != string::npos) final_pat = true;
+		if(!first) { // unload
+			string outval;
+			for(int i = 0; i < 5; ++i) {
+				outval.clear();
+				while(getline(file,c)) {
+					outval += c;
+					if(c.find(";") != string::npos) break;
+				}
+				if(pat_cnt == 1) continue;
+				outval = outval.substr(outval.find("=")+1, outval.find(";")-outval.find("=")-1);
+				assert(outval.size() == _vvScanChain[i].size());
+
+				for(int j = 0; j < _vvScanChain[i].size(); ++j) {
+					CGate* g = _vvScanChain[i][_vvScanChain[i].size()-1-j];
+					if(outval[j] == 'X') {
+						continue;
+					}
+					else if(outval[j] == 'H') {
+						if(g->getFanin(0)->getValue() != 1 && g->getFanin(0)->getValue() != 3){
+							cout << "H! ScanChain: " << i << ", #" << j << " Failed!!!\n";
+							cout << "\t" << g->getName() << "Value: " << g->getFanout()->getValue() <<endl;
+						}
+					}
+					else {
+						if(g->getFanin(0)->getValue() != 0 && g->getFanin(0)->getValue() != 4){
+							cout << "L! ScanChain: " << i << ", #" << j << " Failed!!!\n";
+							cout << "\t" << g->getName() << "Value: "<< g->getFanin(0)->getValue() <<endl;
+						}
+					}
+				}
+			}
+		}
+		
+		if(final_pat) break;
+		reset(); 
+	
+		
+		for(int i = 0; i < 5; ++i) { // load
+			string val;
+			while(getline(file,c)) {
+				val += c;
+				if(c.find(";") != string::npos) break;
+			}
+			//getline(file,c);
+			size_t start = val.find("=")+1;
+			val = val.substr(val.find("=")+1, val.find(";")-val.find("=")-1);
+			assert(val.size() == _vvScanChain[i].size());
+			for(int j = 0; j < _vvScanChain[i].size(); ++j) {
+				CGate* g = _vvScanChain[i][_vvScanChain[i].size()-1-j];
+				if(val[j] == 'N') {
+					int r = rand()%2;
+					g->getFanout()->setValue(2);
+					if(g->getQN()!=0) g->getQN()->setValue(2);	
+					continue;
+				}
+				int v = val[j]-'0';
+				assert(v==0 || v==1);
+				g->getFanout()->setValue(v);
+				if(g->getQN() != 0) {
+					if(v==1) g->getQN()->setValue(0);
+					else g->getQN()->setValue(1);
+				}
+			}
+		}
+		//Skip Multi cpature//
+		if(!first) {	
+		  while(getline(file,c)) {
+		  		if(c.find(";") != string::npos) break;
+		  }
+		}	
+		/////////////////////
+
+		getline(file,c); // Call capture
+		//getline(file,c); // _pi
+		string pi;
+		while(getline(file,c)) {
+			pi += c;
+			if(c.find(";") != string::npos) break;
+		}
+		pi = pi.substr(pi.find("=")+1, pi.find(";")-pi.find("=")-1);
+		assert(pi.size() == _vPi.size());
+		string pi_next;
+		bool reset_pulse = false;
+		bool oneclock_first = false;
+		if(!first) {
+			getline(file,c); // Call capture
+			if(c.find("Xs") != string::npos) getline(file,c);
+			while(getline(file,c)) {
+				pi_next += c;
+				if(c.find(";") != string::npos) break;
+			}
+			pi_next = pi_next.substr(pi_next.find("=")+1, pi_next.find(";")-pi_next.find("=")-1);
+					
+
+
+			
+			int v, v2;
+			if(pi[0] == 'P' && pi_next[0] == '0') oneclock_first = true;
+			if(pi[0] == 'P') {
+				for(int i = 0; i < pi.size(); ++i) {
+					if(pi[i] == 'N') {
+						int r = rand()%2;
+						_vPi[i]->setValue(2);
+					}
+					else{
+						if(i == 0) _vPi[i]->setValue(1);
+						else _vPi[i]->setValue(pi[i]-'0');
+					}
+				}
+				evaluate();
+				renewPPIs();
+			}
+			for(int i = 0; i < pi.size(); ++i) {
+				//continue;
+				int r = rand()%2;
+				if(i==0) _vPi[i]->setValue(1);
+				else {
+					if(pi_next[i] == 'N') continue;//_vPi[i]->setValue(2);
+					else _vPi[i]->setValue(pi_next[i]-'0');
+				}
+			}
+		}
+		else {
+			for(int i = 0; i < pi.size(); ++i) {
+				if(pi[i] == 'N') {_vPi[i]->setValue(2);continue;}
+				int v = pi[i]-'0';
+				_vPi[i]->setValue(v);
+			}	
+		}
+		if(reset_pulse) {
+			cout << "RESET!!!\n";
+			for(CGate* g: _vGate) {
+				g->getFanout()->setValue(0);
+				if(g->getQN() != 0) g->getQN()->setValue(1);
+			}
+		}
+		evaluate();
+		
+		int WSA = 0;
+		int WSA_die0 = 0;
+		int WSA_die1 = 0;
+		for(CGate* g: _vGate) {
+			if(g->getType() == "Dummy") continue;
+			if(g->getFanout()->getValue() > 2) {
+				WSA += (1+g->getFanout()->getFanoutNum());
+				if (g->getDie() == 0) {
+					 WSA_die0 += (1+g->getFanout()->getFanoutNum());
+				}
+				else {
+					 WSA_die1 += (1+g->getFanout()->getFanoutNum());
+				}
+				if(g->getQN() !=0 && g->getQN()->getValue() > 2) {
+					WSA += (1+g->getQN()->getFanoutNum());
+			  	if (g->getDie() == 0) {
+			  		 WSA_die0 += (1+g->getQN()->getFanoutNum());
+			  	}
+			  	else {
+			  		 WSA_die1 += (1+g->getQN()->getFanoutNum());
+			  	}
+				}	
+			}
+		}
+		vWSA.push_back(WSA);
+		vdie0.push_back(WSA_die0);
+		vdie1.push_back(WSA_die1);
+		int weight = 0;
+		for(CWire* w: _vWire) {
+			if(w->getValue() > 2) {
+				int d1 = 0;
+				if(w->getType() > 0) d1 = w->getFanin()->getDie();
+				for(int i = 0; i < w->getFanoutNum();++i) {
+					if(w->getFanout(i)->getDie() != d1) ++weight;
+				}
+			}
+		}
+		miv.push_back(weight);
+		cout << "WSA: " << WSA << endl;
+		cout << "WSA_die0: " << WSA_die0 << endl;
+
+		string po;
+		while(getline(file,c)) {
+			po += c;
+			if(c.find(";") != string::npos) break;
+		}
+		po = po.substr(po.find("=")+1, po.find(";")-po.find("=")-1);
+		assert(po.size() == _vPo.size());
+
+		
+		for(int i = 0; i < po.size(); ++i) {
+			if(po[i] == 'X') {
+				continue;
+			}
+			else if(po[i] == 'H') {
+				if(_vPo[i]->getValue() != 1 && _vPo[i]->getValue() != 3) {
+					cout << "Po: " << _vPo[i]->getName() << " Failed!!\n" << "i=" << i << ",po[i]=H, _vPo[i]=" << _vPo[i]->getValue() << endl;
+				}
+			}
+			else {
+				if(_vPo[i]->getValue() != 0 && _vPo[i]->getValue() != 4) {
+					cout << "Po: " << _vPo[i]->getName() << " Failed!!\n" << "i=" << i << ",po[i]=L, _vPo[i]=" << _vPo[i]->getValue() << endl;
+				}
+			}
+		}
+		first = false;
+		++pat_cnt;
+	}
+	file.close();
+
+	ofstream outfile1("toggle.csv");
+	for(int i = 0; i < vWSA.size(); ++i) {
+		outfile1 << i << "," << vWSA[i] << "," << vdie0[i] << "," << vdie1[i] << "," << miv[i] << "\n"; 
+	}
 }

@@ -38,6 +38,10 @@ int main(int argc, char** argv) {
 	cout << "Begin Test\n";
 	circuit.test(argv[4]);
 	cout << "End Test2\n";
+
+	cout << "Begin Validate\n";
+	//circuit.testonly(argv[4]);
+	cout << "End Validate\n";
 //	circuit.renewPPIs();
 //	circuit.evaluate();
 //	circuit.printInputOutput();

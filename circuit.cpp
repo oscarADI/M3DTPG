@@ -433,7 +433,7 @@ void CCircuit::function() {
 void CCircuit::test(string pattern) {
 
 	ifstream file(pattern);
-	ofstream reshape("tate_reshape.stil");
+	ofstream reshape("leon_reshape.stil");
 	string c;
 	bool first = true;
 	bool final_pat = false;
@@ -654,7 +654,7 @@ void CCircuit::test(string pattern) {
 			first = false;
 			continue;
 		}
-		if(pat_cnt <= 117) optimized = false;
+		if(pat_cnt <= 252) optimized = false;
 		else{
 			dumpILP();
 			optimized = gurobi();
@@ -851,7 +851,7 @@ void CCircuit::test(string pattern) {
 	}
 	file.close();
 /*
-	ofstream outfile1("tate_prefer.csv");
+	ofstream outfile1("leon_prefer.csv");
 	for(int i = 0; i < vWSA.size(); ++i) {
 		outfile1 << i << "," << vWSA[i] << "," << vdie0[i] << "," << vdie1[i] << "," << miv[i] << "\n"; 
 	}*/
@@ -868,18 +868,18 @@ void CCircuit::reset() {
 }
 
 void CCircuit::dumpSTA(bool first, int cnt) {
-	ofstream file("/autofs/home/sh528/ITC2020/netcard_v4/prefer.tcl", std::ofstream::out|std::ofstream::app);
+	ofstream file("to324.tcl", std::ofstream::out|std::ofstream::app);
 	if(first) {
 		file.clear();
   	file << endl;	
-  	file << "set target_library \"/autofs/home/sh528/nangate45nm/2d_db/NG45nm_tt_ecsm.db\"" << endl;	
+  	file << "set target_library \"/home/sh528/nangate45nm/2d_db/NG45nm_tt_ecsm.db\"" << endl;	
   	file << "set link_library \"* $target_library\"" << endl;
   	file << "read_verilog die0.v" << endl;
   	file << "read_verilog die1.v" << endl;
   	file << "read_verilog top.v" << endl;
   	file << "current_design top\n";
 		file << "link\n";
-		file << "source tate_pairing.sdc\n";
+		file << "source leon3mp_fast.sdc\n";
 		file << "read_parasitic top.spef\n";
 		file << "read_parasitic die0_noOpt.spef -path Udie0\n";
 		file << "read_parasitic die1_noOpt.spef -path Udie1\n";
@@ -1139,6 +1139,57 @@ void CCircuit::renewPPIs() {
 //	}
 }
 
+void CCircuit::renewPPIs_for_testonly() {
+	vector< vector<int> > store;
+	for(vector<CGate*> vG : _vvScanChain) {
+		vector<int> tmp;
+		for(CGate* g : vG) {
+			int v = g->getFanin(0)->getValue();
+			int v2 = g->getFanout()->getValue();
+			//assert(v2 != 2);
+			if(v==v2) tmp.push_back(v);
+			else if(v == 2) tmp.push_back(2);
+			else if(v2 == 2) tmp.push_back(v);
+			else if(v2 == 0 && v == 1) tmp.push_back(3);
+			else if(v2 == 1 && v == 0) tmp.push_back(4);	
+			else assert(false);
+		}
+		store.push_back(tmp);
+	}
+
+
+	int cnt = 0;	
+	for(int i = 0; i < store.size(); ++i) {
+		for(int j = 0; j < _vvScanChain[i].size(); ++j) {
+			CGate*g = _vvScanChain[i][j];
+			int v = store[i][j];
+			if(v == 0) {
+				g->getFanout()->setValue(0);
+				if(g->getQN() != 0) g->getQN()->setValue(1);
+			}
+			else if(v == 1) {
+				g->getFanout()->setValue(1);
+				if(g->getQN() != 0) g->getQN()->setValue(0);
+			}
+			else if(v == 2) {
+				g->getFanout()->setValue(2);
+				if(g->getQN() != 0) g->getQN()->setValue(2);
+			}
+			else if(v == 3) {
+				++cnt;
+				g->getFanout()->setValue(3);
+				if(g->getQN() != 0) g->getQN()->setValue(4);
+			}
+			else if(v == 4) {
+				++cnt;
+				g->getFanout()->setValue(4);
+				if(g->getQN() != 0) g->getQN()->setValue(3);
+			}
+			else assert(false);
+		}
+	}
+}
+
 void CCircuit::evaluate() {
 //	int nowlevel = 1;
 //	while(1) {
@@ -1241,7 +1292,7 @@ void CCircuit::Xfill() {
 }
 
 void CCircuit::dumpILP() {
-	ofstream file("tatexfill.lp");
+	ofstream file("leonxfill.lp");
 	vector<string> variable;
 	_constraint = 0;
 	
@@ -2056,7 +2107,7 @@ void CCircuit::checkILP() {
 bool CCircuit::gurobi() {
   try {
     GRBEnv env = GRBEnv();
-    GRBModel model = GRBModel(env, "tatexfill.lp");
+    GRBModel model = GRBModel(env, "leonxfill.lp");
 
 		model.set("MIPGapAbs", "20.0");
 		//model.set("TimeLimit", "500.0");
@@ -2149,7 +2200,7 @@ void CCircuit::testonly(string pattern) {
 		if(c.find("end") != string::npos) final_pat = true;
 		if(!first) { // unload
 			string outval;
-			for(int i = 0; i < 5; ++i) {
+			for(int i = 0; i < _vvScanChain.size(); ++i) {
 				outval.clear();
 				while(getline(file,c)) {
 					outval += c;
@@ -2184,7 +2235,7 @@ void CCircuit::testonly(string pattern) {
 		reset(); 
 	
 		
-		for(int i = 0; i < 5; ++i) { // load
+		for(int i = 0; i < _vvScanChain.size(); ++i) { // load
 			string val;
 			while(getline(file,c)) {
 				val += c;
@@ -2244,34 +2295,23 @@ void CCircuit::testonly(string pattern) {
 
 			
 			int v, v2;
-			if(pi[0] == 'P' && pi_next[0] == '0') oneclock_first = true;
-			if(pi[0] == 'P') {
-				for(int i = 0; i < pi.size(); ++i) {
-					if(pi[i] == 'N') {
-						int r = rand()%2;
-						_vPi[i]->setValue(2);
-					}
-					else{
-						if(i == 0) _vPi[i]->setValue(1);
-						else _vPi[i]->setValue(pi[i]-'0');
-					}
-				}
-				evaluate();
-				renewPPIs();
-			}
 			for(int i = 0; i < pi.size(); ++i) {
-				//continue;
-				int r = rand()%2;
-				if(i==0) _vPi[i]->setValue(1);
-				else {
-					if(pi_next[i] == 'N') continue;//_vPi[i]->setValue(2);
-					else _vPi[i]->setValue(pi_next[i]-'0');
+				if(pi[i] == 'P') _vPi[i]->setValue(0);
+				else if(pi[i] == 'N') {
+					int r = rand()%2;
+					_vPi[i]->setValue(2);
+				}
+				else{
+					_vPi[i]->setValue(pi[i]-'0');
 				}
 			}
+			evaluate();
+			renewPPIs_for_testonly();
 		}
 		else {
 			for(int i = 0; i < pi.size(); ++i) {
 				if(pi[i] == 'N') {_vPi[i]->setValue(2);continue;}
+				else if(pi[i] == 'P') {_vPi[i]->setValue(0);continue;}
 				int v = pi[i]-'0';
 				_vPi[i]->setValue(v);
 			}	
@@ -2284,6 +2324,7 @@ void CCircuit::testonly(string pattern) {
 			}
 		}
 		evaluate();
+		dumpSTA(first, pat_cnt);
 		
 		int WSA = 0;
 		int WSA_die0 = 0;

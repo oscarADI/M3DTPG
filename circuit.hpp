@@ -208,6 +208,7 @@ public:
 	void reset();
 	void assignInputs();
 	void renewPPIs();
+	void renewPPIs_for_testonly();
 	void addScanChain(vector<CGate*> vGate) {_vvScanChain.push_back(vGate);}
 	vector<CGate*> getScanChain(int i) {return _vvScanChain[i];}
 	int getScanChainNum() {return _vvScanChain.size();}

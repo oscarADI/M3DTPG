@@ -25,18 +25,19 @@ int main(int argc, char** argv) {
 
 	cout << "Begin Parsing\n";
 	parse.parseMerge(argv[1]);
-	parse.parseSTIL(argv[4]);
-	parse.partition(argv[2], argv[3]);
+	circuit.CountLogicGate();
+	//parse.parseSTIL(argv[4]);
+	//parse.partition(argv[2], argv[3]);
 	cout << "End Parsing\n";
 
 	cout << "Begin Levelize\n";
-	circuit.levelize();
+	//circuit.levelize();
 	cout << "End Levelize\n";
 	
 	//circuit.assignInputs();
 
 	cout << "Begin Test\n";
-	circuit.test(argv[4]);
+	//circuit.test(argv[4]);
 	cout << "End Test2\n";
 
 	cout << "Begin Validate\n";

@@ -220,6 +220,7 @@ public:
 	void IlpXor(string, string, string, std::ofstream&, bool);
 	void checkILP();
 	bool gurobi();
+	int CountLogicGate();
 	/////////////////Debug////////////////////////
 	void printWireFromName(string name) {
 		CWire* w = getWireFromName(name);

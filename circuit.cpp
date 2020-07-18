@@ -433,7 +433,7 @@ void CCircuit::function() {
 void CCircuit::test(string pattern) {
 
 	ifstream file(pattern);
-	ofstream reshape("leon_reshape.stil");
+	ofstream reshape("leon_pat4.stil");
 	string c;
 	bool first = true;
 	bool final_pat = false;
@@ -500,7 +500,7 @@ void CCircuit::test(string pattern) {
 			}
 		}
 		
-		if(final_pat) {
+		if(final_pat || pat_cnt == 240) {
 			reshape << " }" << endl << "}" << endl << endl;
 			reshape << "// Patterns reference\n";
 			break;
@@ -596,7 +596,6 @@ void CCircuit::test(string pattern) {
 					for(CGate* g: vG) {
 						if(g->getFanout()->getProb() == 0.5) {
 							assert(g->getFanout()->getValue() == 2);
-						//	cout << g->getName() << " " << g->getFanin(0)->getProb() << endl;
 							if(g->getFanin(0)->getProb() > 0.5) {g->getFanout()->setValue(1);if(g->getQN()!=0)g->getQN()->setValue(0);}
 							else if(g->getFanin(0)->getProb() < 0.5) {g->getFanout()->setValue(0);if(g->getQN()!=0)g->getQN()->setValue(1);}
 							else {
@@ -612,8 +611,8 @@ void CCircuit::test(string pattern) {
 				//if(pat_cnt == 5) checkILP();
 				renewPPIs();
 			}
-			for(int i = 0; i < pi.size(); ++i) {
-				//continue;
+		/*	for(int i = 0; i < pi.size(); ++i) {
+				continue;
 				int r = rand()%2;
 				if(pi_next[i] == 'P') _vPi[i]->setValue(1);
 				else {
@@ -621,7 +620,7 @@ void CCircuit::test(string pattern) {
 					else _vPi[i]->setValue(pi_next[i]-'0');
 					//else if(pi[i] == 'N') _vPi[i]->setValue(pi_next[i]-'0');
 				}
-			}
+			}*/
 		}
 		else {
 			for(int i = 0; i < pi.size(); ++i) {
@@ -654,20 +653,21 @@ void CCircuit::test(string pattern) {
 			first = false;
 			continue;
 		}
-		if(pat_cnt <= 252) optimized = false;
+		if(pat_cnt != 162 && pat_cnt != 166 && pat_cnt != 211 && pat_cnt != 212 && pat_cnt != 221 && pat_cnt != 222 && pat_cnt != 226 && pat_cnt != 230 && pat_cnt != 239) optimized = false;
 		else{
 			dumpILP();
 			optimized = gurobi();
 		}
 		if(!optimized) {
-			//if(pat_cnt <= 200) {
+			if(true) {
   			while(getline(file,c)) {
   				if(c.find(";") != string::npos) break;
   			}
   			++pat_cnt;
   			continue;
-			/*}
-			for(CWire* w: _vWire) w->setValue(w->getTimeValue(0));
+			}
+		}
+		/*	for(CWire* w: _vWire) w->setValue(w->getTimeValue(0));
 			Xfill();
 			for(vector<CGate*> vG: _vvScanChain) {
 				for(CGate* g: vG) {
@@ -701,7 +701,7 @@ void CCircuit::test(string pattern) {
 					}
 				}
 			}*/
-		}
+		//}
 	/*	int WSA = 0;
 		int WSA_die0 = 0;
 		int WSA_die1 = 0;
@@ -868,7 +868,7 @@ void CCircuit::reset() {
 }
 
 void CCircuit::dumpSTA(bool first, int cnt) {
-	ofstream file("to324.tcl", std::ofstream::out|std::ofstream::app);
+	ofstream file("leon.tcl", std::ofstream::out|std::ofstream::app);
 	if(first) {
 		file.clear();
   	file << endl;	
@@ -2180,7 +2180,6 @@ bool CCircuit::gurobi() {
 }
 
 void CCircuit::testonly(string pattern) {
-
 	ifstream file(pattern);
 	string c;
 	bool first = true;
@@ -2400,4 +2399,19 @@ void CCircuit::testonly(string pattern) {
 	for(int i = 0; i < vWSA.size(); ++i) {
 		outfile1 << i << "," << vWSA[i] << "," << vdie0[i] << "," << vdie1[i] << "," << miv[i] << "\n"; 
 	}
+}
+
+int CCircuit::CountLogicGate() {
+	int	ngate = 0;
+ 	for(CGate* g: _vGate) {
+		if(g->getType() == "FA") ngate += 6;
+		else if(g->getType() == "MUX") ngate += 4;
+		else if(g->getType() == "SDFF") continue; 
+		else {
+			if(g->getFaninNum() == 1) ngate += 1;
+			else ngate += g->getFaninNum()-1;
+		}
+	}	
+	cout << "#Logic Gates: " << ngate << endl;
+	return ngate;
 }
